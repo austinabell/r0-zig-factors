@@ -1,0 +1,9 @@
+.DS_Store
+Cargo.lock
+methods/guest/Cargo.lock
+target/
+**/zig-cache/
+**/zig-out
+
+# Ignoring the rust code from the repo, using locally for reference
+./methods
