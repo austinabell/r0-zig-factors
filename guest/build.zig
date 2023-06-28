@@ -29,7 +29,7 @@ pub fn build(b: *std.build.Builder) void {
     const exe = b.addExecutable("factors", "src/main.zig");
 
     exe.setBuildMode(.ReleaseSmall);
-    exe.setLinkerScriptPath(.{ .path = "src/linker.ld" });
+    exe.setLinkerScriptPath(.{ .path = "linker.ld" });
     exe.strip = true;
     // _ = exe.installRaw("factors.bin", .{});
     exe.setTarget(target);
