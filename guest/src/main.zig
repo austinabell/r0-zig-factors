@@ -1,8 +1,5 @@
-const SYSCON_REG_ADDR:usize = 0x11100000;
-const UART_BUF_REG_ADDR:usize = 0x10000000;
+const std = @import("std");
 
-const syscon = @intToPtr(*volatile u32, SYSCON_REG_ADDR);
-const uart_buf_reg = @intToPtr(*volatile u8, UART_BUF_REG_ADDR);
 const ECALL_HALT = 0;
 const HALT_TERMINATE = 0;
 const INITIAL_SHA_STATE = [_]u32{
@@ -35,4 +32,15 @@ fn sys_halt() noreturn {
 		: "memory"
 	);
 	unreachable;
+}
+
+fn sys_sha_buffer(_: []u8) [8]u32 {
+	var buffer = [_]u32{0} ** 8;
+
+	// TODO do hash
+	return buffer;
+}
+
+fn serialize_u64(value: u64) [8]u8 {
+	return std.mem.asBytes(&value);
 }
