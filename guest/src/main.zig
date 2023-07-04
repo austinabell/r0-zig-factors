@@ -3,6 +3,9 @@ const std = @import("std");
 const ECALL_HALT = 0;
 const ECALL_SHA = 3;
 const HALT_TERMINATE = 0;
+const FILENO_JOURNAL = 3;
+const ECALL_SOFTWARE = 2;
+
 const INITIAL_SHA_STATE = [_]u32{
     0x6a09e667,
     0xbb67ae85,
@@ -54,7 +57,6 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
         \\ ecall
         :
         : [syscallNumber] "{t0}" (ECALL_HALT),
-          // NOTE: rust code does bit OR with the exit code, but in code is always 0, so ignored
           [buffer] "{a0}" (&buffer),
           [in_state] "{a1}" (&in_state),
           [block_1_ptr] "{a2}" (&hash_block),
@@ -68,4 +70,20 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
 
 fn serialize_u64(value: u64) [8]u8 {
     return std.mem.asBytes(&value);
+}
+
+fn sys_write(data: []u8) noreturn {
+	const syscall_name: [:0]const u8 = "nr::SYS_WRITE";
+	asm volatile (
+        \\ ecall
+        :
+        : [syscallNumber] "{t0}" (ECALL_SOFTWARE),
+          [from_host] "{a0}" (&undefined),
+          [from_host_words] "{a1}" (&0),
+          [syscall_name] "{a2}" (syscall_name),
+          [file_descriptor] "{a3}" (FILENO_JOURNAL),
+          [write_buf] "{a4}" (&data),
+          [write_buf_len] "{a5}" (data.len),
+        : "memory"
+    );
 }
