@@ -9,11 +9,11 @@ pub fn build(b: *std.build.Builder) void {
     var enabled_features = Feature.Set.empty;
 
     // disable all CPU extensions
-    disabled_features.addFeature(@enumToInt(features.a));
-    disabled_features.addFeature(@enumToInt(features.c));
-    disabled_features.addFeature(@enumToInt(features.d));
-    disabled_features.addFeature(@enumToInt(features.e));
-    disabled_features.addFeature(@enumToInt(features.f));
+    // disabled_features.addFeature(@enumToInt(features.a));
+    // disabled_features.addFeature(@enumToInt(features.c));
+    // disabled_features.addFeature(@enumToInt(features.d));
+    // disabled_features.addFeature(@enumToInt(features.e));
+    // disabled_features.addFeature(@enumToInt(features.f));
     // except multiply
     enabled_features.addFeature(@enumToInt(features.m));
 

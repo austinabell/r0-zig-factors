@@ -20,13 +20,19 @@ const INITIAL_SHA_STATE = [_]u32{
 
 export fn _start() callconv(.Naked) noreturn {
     // TODO logic
+	// Create buffer large enough for two u64 values.
+	// This could be done separately, but it saves a syscall to read all words at once.
+	var buffer = [_]u8{0} ** 16;
+	sys_read(FILENO_STDIN, 16, buffer);
 
-    sys_halt();
+	const serialized_value = std.mem.asBytes(&8);
+	sys_write(serialized_value);
+	var sha_state = sys_sha_buffer(serialized_value, INITIAL_SHA_STATE);
+
+    sys_halt(sha_state);
 }
 
-fn sys_halt() noreturn {
-    // TODO pull hash state instead of zeroed
-    const out_state = [_]u32{0} ** 8;
+fn sys_halt(out_state: [8]u32) noreturn {
     asm volatile (
         \\ ecall
         :
@@ -41,7 +47,8 @@ fn sys_halt() noreturn {
 
 fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
     // TODO this assumes that the data is unaligned and that there is not enough for a full block
-    // for the sake of this program it's fine, but logic will be different if
+    // for the sake of this program it's fine, but logic will be different if the data is larger
+	// than the block size.
     var buffer: [8]u32 = undefined;
 
     // TODO this is assuming a single block, without length terminated padding, zero padded.
@@ -51,7 +58,7 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
     var bytes = @ptrCast([*]u8, &hash_block);
 
     // Copy whole bytes
-    var len = std.math.min(data.len, bytes.len);
+    var len = std.math.min(data.len, hash_block.len*4);
     std.mem.copy(u8, bytes[0..len], data[0..len]);
 
     asm volatile (
@@ -69,28 +76,24 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
     return buffer;
 }
 
-fn serialize_u64(value: u64) [8]u8 {
-    return std.mem.asBytes(&value);
-}
-
-fn sys_write(data: []u8) noreturn {
+fn sys_write(data: []u8) void {
 	const syscall_name: [:0]const u8 = "nr::SYS_WRITE";
 	asm volatile (
-        \\ ecall
+		\\ ecall
         :
         : [syscallNumber] "{t0}" (ECALL_SOFTWARE),
-          [from_host] "{a0}" (&undefined),
-          [from_host_words] "{a1}" (&0),
-          [syscall_name] "{a2}" (syscall_name),
+          [from_host] "{a0}" (&data),
+          [from_host_words] "{a1}" (0),
+          [syscall_name] "{a2}" (syscall_name.ptr),
           [file_descriptor] "{a3}" (FILENO_JOURNAL),
-          [write_buf] "{a4}" (&data),
+          [write_buf] "{a4}" (data.ptr),
           [write_buf_len] "{a5}" (data.len),
         : "memory"
     );
 }
 
-fn sys_read(fd: u32, comptime nrequested: usize, buffer: [nrequested]u8) usize {
-    const main_words = nrequested / @sizeOf(u32);
+fn sys_read(fd: u32, comptime nrequested: usize, buffer: [nrequested]u8) void {
+    const main_words = nrequested / 4;
 
 	const syscall_name: [:0]const u8 = "nr::SYS_READ";
 	asm volatile (
@@ -100,7 +103,7 @@ fn sys_read(fd: u32, comptime nrequested: usize, buffer: [nrequested]u8) usize {
         : [syscallNumber] "{t0}" (ECALL_SOFTWARE),
           [from_host] "{a0}" (&buffer),
           [from_host_words] "{a1}" (main_words),
-          [syscall_name] "{a2}" (syscall_name),
+          [syscall_name] "{a2}" (syscall_name.ptr),
           [file_descriptor] "{a3}" (fd),
           [main_requested] "{a4}" (nrequested),
         : "memory"
