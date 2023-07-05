@@ -26,7 +26,7 @@ export fn _start() callconv(.Naked) noreturn {
     const a: u64 = std.mem.bytesAsValue(u64, buffer[0..8]).*;
     const b: u64 = std.mem.bytesAsValue(u64, buffer[8..16]).*;
     if (a == 1 or b == 1) {
-        @panic("This is a panic message!\n");
+        @panic("Trivial factors");
     }
 
     var product: u64 = undefined;
