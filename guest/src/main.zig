@@ -4,6 +4,7 @@ const ECALL_HALT = 0;
 const ECALL_SHA = 3;
 const HALT_TERMINATE = 0;
 const FILENO_JOURNAL = 3;
+const FILENO_STDIN = 0;
 const ECALL_SOFTWARE = 2;
 
 const INITIAL_SHA_STATE = [_]u32{
@@ -84,6 +85,24 @@ fn sys_write(data: []u8) noreturn {
           [file_descriptor] "{a3}" (FILENO_JOURNAL),
           [write_buf] "{a4}" (&data),
           [write_buf_len] "{a5}" (data.len),
+        : "memory"
+    );
+}
+
+fn sys_read(fd: u32, comptime nrequested: usize, buffer: [nrequested]u8) usize {
+    const main_words = nrequested / @sizeOf(u32);
+
+	const syscall_name: [:0]const u8 = "nr::SYS_READ";
+	asm volatile (
+        \\ ecall
+		:
+        // : [out_a0] "={a0}" (a0) // NOTE: probably don't need to know the amount read
+        : [syscallNumber] "{t0}" (ECALL_SOFTWARE),
+          [from_host] "{a0}" (&buffer),
+          [from_host_words] "{a1}" (main_words),
+          [syscall_name] "{a2}" (syscall_name),
+          [file_descriptor] "{a3}" (fd),
+          [main_requested] "{a4}" (nrequested),
         : "memory"
     );
 }
