@@ -18,17 +18,38 @@ const INITIAL_SHA_STATE = [_]u32{
     0x5be0cd19,
 };
 
-export fn _start() callconv(.Naked) noreturn {
+comptime {
+    asm (
+        \\ .section .text._start
+        \\ .globl _start
+        \\ _start:
+        \\ .option push
+        \\ .option norelax
+        \\ la gp, __global_pointer$
+        \\ .option pop
+		// Sets stack top to 0x0BFFFC00 (or should)
+		\\ lui sp, 0x0BFFF
+        \\ addi sp, sp, 1024
+		\\ lui t0, 0xF
+		\\ addi t0, t0, 768
+		\\ or sp, sp, t0
+        // \\ lw sp, 0(sp)
+        \\ jal ra, __start
+    );
+}
+
+export fn __start() callconv(.Naked) noreturn {
     // Create buffer large enough for two u64 values.
     // This could be done separately, but it saves a syscall to read all words at once.
     var buffer = [_]u8{0} ** 16;
-    sys_read(FILENO_STDIN, 16, buffer);
+    sys_read(FILENO_STDIN, 16, &buffer);
     const a: u64 = std.mem.bytesAsValue(u64, buffer[0..8]).*;
     const b: u64 = std.mem.bytesAsValue(u64, buffer[8..16]).*;
     if (a == 1 or b == 1) {
         @panic("Trivial factors");
     }
 
+    // var product: u64 = a;
     var product: u64 = undefined;
     if (@mulWithOverflow(u64, a, b, &product)) {
         @panic("Integer overflow");
@@ -38,17 +59,17 @@ export fn _start() callconv(.Naked) noreturn {
     sys_write(serialized_value);
     var sha_state = sys_sha_buffer(serialized_value, INITIAL_SHA_STATE);
 
-    sys_halt(sha_state);
+    sys_halt(&sha_state);
 }
 
-fn sys_halt(out_state: [8]u32) noreturn {
+fn sys_halt(out_state: *[8]u32) noreturn {
     asm volatile (
         \\ ecall
         :
         : [syscallNumber] "{t0}" (ECALL_HALT),
           // NOTE: rust code does bit OR with the exit code, but in code is always 0, so ignored
           [haltCode] "{a0}" (HALT_TERMINATE),
-          [outState] "{a1}" (&out_state),
+          [outState] "{a1}" (out_state),
         : "memory"
     );
     unreachable;
@@ -73,7 +94,7 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
     asm volatile (
         \\ ecall
         :
-        : [syscallNumber] "{t0}" (ECALL_HALT),
+        : [syscallNumber] "{t0}" (ECALL_SHA),
           [buffer] "{a0}" (&buffer),
           [in_state] "{a1}" (&in_state),
           [block_1_ptr] "{a2}" (&hash_block),
@@ -86,12 +107,12 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
 }
 
 fn sys_write(data: []u8) void {
-    const syscall_name: [:0]const u8 = "nr::SYS_WRITE";
+    const syscall_name: [:0]const u8 = "risc0_zkvm_platform::syscall::nr::SYS_WRITE";
     asm volatile (
         \\ ecall
         :
         : [syscallNumber] "{t0}" (ECALL_SOFTWARE),
-          [from_host] "{a0}" (&data),
+          [from_host] "{a0}" (data.ptr),
           [from_host_words] "{a1}" (0),
           [syscall_name] "{a2}" (syscall_name.ptr),
           [file_descriptor] "{a3}" (FILENO_JOURNAL),
@@ -101,16 +122,16 @@ fn sys_write(data: []u8) void {
     );
 }
 
-fn sys_read(fd: u32, comptime nrequested: usize, buffer: [nrequested]u8) void {
+fn sys_read(fd: u32, comptime nrequested: usize, buffer: *[nrequested]u8) void {
     const main_words = nrequested / 4;
 
-    const syscall_name: [:0]const u8 = "nr::SYS_READ";
+    const syscall_name: [:0]const u8 = "risc0_zkvm_platform::syscall::nr::SYS_READ";
     asm volatile (
         \\ ecall
         :
         // : [out_a0] "={a0}" (a0) // NOTE: probably don't need to know the amount read
         : [syscallNumber] "{t0}" (ECALL_SOFTWARE),
-          [from_host] "{a0}" (&buffer),
+          [from_host] "{a0}" (buffer),
           [from_host_words] "{a1}" (main_words),
           [syscall_name] "{a2}" (syscall_name.ptr),
           [file_descriptor] "{a3}" (fd),

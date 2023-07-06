@@ -9,11 +9,14 @@ use risc0_zkvm::{
 const BYTES: &[u8] = include_bytes!("../../guest/zig-out/bin/factors");
 
 fn main() {
+    env_logger::init();
+
     // First, we construct an executor environment
     let env = ExecutorEnv::builder()
         .add_input(&to_vec(&17u64).unwrap())
         .add_input(&to_vec(&23u64).unwrap())
-        .build();
+        .build()
+        .unwrap();
 
     // Next, we make an executor, loading the (renamed) ELF binary.
     let mut exec = Executor::from_elf(env, BYTES).unwrap();
@@ -21,11 +24,17 @@ fn main() {
     // Run the executor to produce a session.
     let session = exec.run().unwrap();
 
+    // Extract journal from session (i.e. output c, where c = a * b)
+    let c: u64 = from_slice(&session.journal).expect(
+        "Journal output should deserialize into the same types (& order) that it was written",
+    );
+    println!("c = {c}");
+
     // Prove the session to produce a receipt.
     let receipt = session.prove().unwrap();
 
     // Extract journal of receipt (i.e. output c, where c = a * b)
-    let c: u64 = from_slice(&receipt.journal).expect(
+    let c: u64 = from_slice(receipt.get_journal()).expect(
         "Journal output should deserialize into the same types (& order) that it was written",
     );
 
