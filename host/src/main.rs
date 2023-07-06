@@ -6,6 +6,7 @@ use risc0_zkvm::{
     Executor, ExecutorEnv,
 };
 
+// const BYTES: &[u8] = include_bytes!("../../target/multiply");
 const BYTES: &[u8] = include_bytes!("../../guest/zig-out/bin/factors");
 
 fn main() {
@@ -23,12 +24,6 @@ fn main() {
 
     // Run the executor to produce a session.
     let session = exec.run().unwrap();
-
-    // Extract journal from session (i.e. output c, where c = a * b)
-    let c: u64 = from_slice(&session.journal).expect(
-        "Journal output should deserialize into the same types (& order) that it was written",
-    );
-    println!("c = {c}");
 
     // Prove the session to produce a receipt.
     let receipt = session.prove().unwrap();

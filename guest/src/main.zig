@@ -7,17 +7,6 @@ const FILENO_JOURNAL = 3;
 const FILENO_STDIN = 0;
 const ECALL_SOFTWARE = 2;
 
-const INITIAL_SHA_STATE = [_]u32{
-    0x6a09e667,
-    0xbb67ae85,
-    0x3c6ef372,
-    0xa54ff53a,
-    0x510e527f,
-    0x9b05688c,
-    0x1f83d9ab,
-    0x5be0cd19,
-};
-
 comptime {
     asm (
         \\ .section .text._start
@@ -27,12 +16,12 @@ comptime {
         \\ .option norelax
         \\ la gp, __global_pointer$
         \\ .option pop
-		// Sets stack top to 0x0BFFFC00 (or should)
-		\\ lui sp, 0x0BFFF
+        // Sets stack top to 0x0BFFFC00 (or should)
+        \\ lui sp, 0x0BFFF
         \\ addi sp, sp, 1024
-		\\ lui t0, 0xF
-		\\ addi t0, t0, 768
-		\\ or sp, sp, t0
+        \\ lui t0, 0xF
+        \\ addi t0, t0, 768
+        \\ or sp, sp, t0
         // \\ lw sp, 0(sp)
         \\ jal ra, __start
     );
@@ -49,7 +38,6 @@ export fn __start() callconv(.Naked) noreturn {
         @panic("Trivial factors");
     }
 
-    // var product: u64 = a;
     var product: u64 = undefined;
     if (@mulWithOverflow(u64, a, b, &product)) {
         @panic("Integer overflow");
@@ -57,7 +45,23 @@ export fn __start() callconv(.Naked) noreturn {
 
     const serialized_value = std.mem.asBytes(&product);
     sys_write(serialized_value);
-    var sha_state = sys_sha_buffer(serialized_value, INITIAL_SHA_STATE);
+
+    var initial_sha_state = [_]u32{
+        0x6a09e667,
+        0xbb67ae85,
+        0x3c6ef372,
+        0xa54ff53a,
+        0x510e527f,
+        0x9b05688c,
+        0x1f83d9ab,
+        0x5be0cd19,
+    };
+
+	// Arch is little endian, but these values are expected as big endian for SHA, swap.
+    for (initial_sha_state) |*value| {
+        value.* = @byteSwap(value.*);
+    }
+    var sha_state = sys_sha_buffer(serialized_value, &initial_sha_state);
 
     sys_halt(&sha_state);
 }
@@ -75,11 +79,11 @@ fn sys_halt(out_state: *[8]u32) noreturn {
     unreachable;
 }
 
-fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
+fn sys_sha_buffer(data: []u8, in_state: *const [8]u32) [8]u32 {
     // TODO this assumes that the data is unaligned and that there is not enough for a full block
     // for the sake of this program it's fine, but logic will be different if the data is larger
     // than the block size.
-    var buffer: [8]u32 = undefined;
+    var buffer: [8]u32 = [_]u32{0} ** 8;
 
     // TODO this is assuming a single block, without length terminated padding, zero padded.
     // This works for this program, but will need to be changed if used ambiguously.
@@ -91,14 +95,19 @@ fn sys_sha_buffer(data: []u8, in_state: [8]u32) [8]u32 {
     var len = std.math.min(data.len, hash_block.len * 4);
     std.mem.copy(u8, bytes[0..len], data[0..len]);
 
+	// Add END marker since this is always with a trailer
+	bytes[len] = 0x80;
+	const bits_trailer: u32 = 8 * data.len;
+	hash_block[hash_block.len-1] = @byteSwap(bits_trailer);
+
     asm volatile (
         \\ ecall
         :
         : [syscallNumber] "{t0}" (ECALL_SHA),
           [buffer] "{a0}" (&buffer),
-          [in_state] "{a1}" (&in_state),
+          [in_state] "{a1}" (in_state),
           [block_1_ptr] "{a2}" (&hash_block),
-          [block_2_ptr] "{a3}" (&hash_block[8..]),
+          [block_2_ptr] "{a3}" (hash_block[8..]),
           [count] "{a4}" (1),
         : "memory"
     );
