@@ -1,4 +1,3 @@
-__stack_size = 4k;
 ENTRY(_start)
 
 SECTIONS
