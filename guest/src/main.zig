@@ -57,7 +57,7 @@ export fn __start() callconv(.Naked) noreturn {
         0x5be0cd19,
     };
 
-	// Arch is little endian, but these values are expected as big endian for SHA, swap.
+    // Arch is little endian, but these values are expected as big endian for SHA, swap.
     for (initial_sha_state) |*value| {
         value.* = @byteSwap(value.*);
     }
@@ -95,10 +95,10 @@ fn sys_sha_buffer(data: []u8, in_state: *const [8]u32) [8]u32 {
     var len = std.math.min(data.len, hash_block.len * 4);
     std.mem.copy(u8, bytes[0..len], data[0..len]);
 
-	// Add END marker since this is always with a trailer
-	bytes[len] = 0x80;
-	const bits_trailer: u32 = 8 * data.len;
-	hash_block[hash_block.len-1] = @byteSwap(bits_trailer);
+    // Add END marker since this is always with a trailer
+    bytes[len] = 0x80;
+    const bits_trailer: u32 = 8 * data.len;
+    hash_block[hash_block.len - 1] = @byteSwap(bits_trailer);
 
     asm volatile (
         \\ ecall
