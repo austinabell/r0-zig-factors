@@ -16,18 +16,19 @@ comptime {
         \\ .option norelax
         \\ la gp, __global_pointer$
         \\ .option pop
-        // Sets stack top to 0x0BFFFC00 (or should)
-        \\ lui sp, 0x0BFFF
+        // Sets stack top to 0x0020_0400
+        \\ lui sp, 0x0020
         \\ addi sp, sp, 1024
-        \\ lui t0, 0xF
-        \\ addi t0, t0, 768
+        \\ lui t0, 0x04
+        \\ addi t0, t0, 1024
         \\ or sp, sp, t0
         // \\ lw sp, 0(sp)
+        \\ call __start
         \\ jal ra, __start
     );
 }
 
-export fn __start() callconv(.Naked) noreturn {
+export fn __start() callconv(.C) noreturn {
     // Create buffer large enough for two u64 values.
     // This could be done separately, but it saves a syscall to read all words at once.
     var buffer = [_]u8{0} ** 16;
@@ -38,12 +39,12 @@ export fn __start() callconv(.Naked) noreturn {
         @panic("Trivial factors");
     }
 
-    var product: u64 = undefined;
-    if (@mulWithOverflow(u64, a, b, &product)) {
+    var product = @mulWithOverflow(a, b);
+    if (product[1] == 1) {
         @panic("Integer overflow");
     }
 
-    const serialized_value = std.mem.asBytes(&product);
+    const serialized_value = std.mem.asBytes(&product[0]);
     sys_write(serialized_value);
 
     var initial_sha_state = [_]u32{
@@ -58,7 +59,7 @@ export fn __start() callconv(.Naked) noreturn {
     };
 
     // Arch is little endian, but these values are expected as big endian for SHA, swap.
-    for (initial_sha_state) |*value| {
+    for (&initial_sha_state) |*value| {
         value.* = @byteSwap(value.*);
     }
     var sha_state = sys_sha_buffer(serialized_value, &initial_sha_state);
@@ -89,10 +90,10 @@ fn sys_sha_buffer(data: []u8, in_state: *const [8]u32) [8]u32 {
     // This works for this program, but will need to be changed if used ambiguously.
     var hash_block: [16]u32 = [_]u32{0} ** 16;
     // TODO see if can just use a u8 buffer and send pointer as if u32 array
-    var bytes = @ptrCast([*]u8, &hash_block);
+    var bytes = @as([*]u8, @ptrCast(&hash_block));
 
     // Copy whole bytes
-    var len = std.math.min(data.len, hash_block.len * 4);
+    var len = @min(data.len, hash_block.len * 4);
     std.mem.copy(u8, bytes[0..len], data[0..len]);
 
     // Add END marker since this is always with a trailer

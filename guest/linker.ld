@@ -2,8 +2,8 @@ ENTRY(_start)
 
 SECTIONS
 {
-	. = 0x07000000;
-	.text 0x07000000 : ALIGN(4) {
+	. = 0x00200800;
+	.text 0x00200800 : ALIGN(4) {
 		*(.text)
 	}
 

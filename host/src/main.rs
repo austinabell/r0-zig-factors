@@ -29,7 +29,7 @@ fn main() {
     let receipt = session.prove().unwrap();
 
     // Extract journal of receipt (i.e. output c, where c = a * b)
-    let c: u64 = from_slice(receipt.get_journal()).expect(
+    let c: u64 = from_slice(&receipt.journal).expect(
         "Journal output should deserialize into the same types (& order) that it was written",
     );
 
@@ -38,7 +38,8 @@ fn main() {
     // TODO: Implement code for transmitting or serializing the receipt for
     // other parties to verify here
 
-    // Optional: Verify receipt to confirm that recipients will also be able to
-    // verify your receipt
-    // receipt.verify(METHOD_NAME_ID).unwrap();
+    // let image_id = risc0_binfmt::compute_image_id(BYTES).unwrap();
+    // // Optional: Verify receipt to confirm that recipients will also be able to
+    // // verify your receipt
+    // receipt.verify(image_id).unwrap();
 }
