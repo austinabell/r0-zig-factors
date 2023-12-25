@@ -1,10 +1,4 @@
-// TODO: Update the name of the method loaded by the prover. E.g., if the method
-// is `multiply`, replace `METHOD_NAME_ELF` with `MULTIPLY_ELF` and replace
-// `METHOD_NAME_ID` with `MULTIPLY_ID`
-use risc0_zkvm::{
-    serde::{from_slice, to_vec},
-    Executor, ExecutorEnv,
-};
+use risc0_zkvm::{default_prover, ExecutorEnv};
 
 // const BYTES: &[u8] = include_bytes!("../../target/multiply");
 const BYTES: &[u8] = include_bytes!("../../guest/zig-out/bin/factors");
@@ -12,26 +6,18 @@ const BYTES: &[u8] = include_bytes!("../../guest/zig-out/bin/factors");
 fn main() {
     env_logger::init();
 
-    // First, we construct an executor environment
     let env = ExecutorEnv::builder()
-        .add_input(&to_vec(&17u64).unwrap())
-        .add_input(&to_vec(&23u64).unwrap())
+        .write(&17u64)
+        .unwrap()
+        .write(&23u64)
+        .unwrap()
         .build()
         .unwrap();
-
-    // Next, we make an executor, loading the (renamed) ELF binary.
-    let mut exec = Executor::from_elf(env, BYTES).unwrap();
-
-    // Run the executor to produce a session.
-    let session = exec.run().unwrap();
-
-    // Prove the session to produce a receipt.
-    let receipt = session.prove().unwrap();
+    let prover = default_prover();
+    let receipt = prover.prove_elf(env, BYTES).unwrap();
 
     // Extract journal of receipt (i.e. output c, where c = a * b)
-    let c: u64 = from_slice(&receipt.journal).expect(
-        "Journal output should deserialize into the same types (& order) that it was written",
-    );
+    let c: u64 = receipt.journal.decode().unwrap();
 
     assert_eq!(c, 17 * 23);
 
