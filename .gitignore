@@ -1,5 +1,5 @@
 .DS_Store
-Cargo.lock
+# Cargo.lock
 methods/guest/Cargo.lock
 target/
 **/zig-cache/
