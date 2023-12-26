@@ -7,6 +7,16 @@ const FILENO_JOURNAL = 3;
 const FILENO_STDIN = 0;
 const ECALL_SOFTWARE = 2;
 
+const WORD_SIZE = 4;
+const DIGEST_WORDS = 8;
+const DIGEST_BYTES = DIGEST_WORDS * WORD_SIZE;
+const BLOCK_WORDS = DIGEST_WORDS * 2;
+const MAX_SHA_COMPRESS_BLOCKS = 1000;
+
+// TODO try to use with alloc
+// // Symbol defined by the linker script, maybe zig will pick up.
+// pub extern "c" const _end: u8;
+
 comptime {
     asm (
         \\ .section .text._start
@@ -64,6 +74,7 @@ export fn __start() callconv(.C) noreturn {
     }
     var sha_state = sys_sha_buffer(serialized_value, &initial_sha_state);
 
+    // TODO for 0.20 this needs to be sha256(sha256("risc0.Output")+sha_state+<zero digest>+2u16.to_le_bytes()))
     sys_halt(&sha_state);
 }
 
@@ -84,36 +95,45 @@ fn sys_sha_buffer(data: []u8, in_state: *const [8]u32) [8]u32 {
     // TODO this assumes that the data is unaligned and that there is not enough for a full block
     // for the sake of this program it's fine, but logic will be different if the data is larger
     // than the block size.
-    var buffer: [8]u32 = [_]u32{0} ** 8;
+    var out_state: [8]u32 = [_]u32{0} ** 8;
 
-    // TODO this is assuming a single block, without length terminated padding, zero padded.
-    // This works for this program, but will need to be changed if used ambiguously.
-    var hash_block: [16]u32 = [_]u32{0} ** 16;
-    // TODO see if can just use a u8 buffer and send pointer as if u32 array
-    var bytes = @as([*]u8, @ptrCast(&hash_block));
+    // Allocate a buffer to hold all of the data and trailer, aligned to a block boundary.
+    const pad_len = compute_u32s_needed(data.len);
+
+    // Note: do not need to deallocate for a zkvm program, wasted cycles
+    // TODO reserving a larger but static amount of buffer until I resolve a reasonable way to alloc
+    var hash_buffer: [160]u32 = [_]u32{0} ** 160;
+    var bytes = @as([*]u8, @ptrCast(&hash_buffer));
 
     // Copy whole bytes
-    var len = @min(data.len, hash_block.len * 4);
+    var len = @min(data.len, pad_len * 4);
     std.mem.copy(u8, bytes[0..len], data[0..len]);
 
     // Add END marker since this is always with a trailer
     bytes[len] = 0x80;
-    const bits_trailer: u32 = 8 * data.len;
-    hash_block[hash_block.len - 1] = @byteSwap(bits_trailer);
 
+    // Add trailer with number of bits written. This needs to be big endian.
+    const bits_trailer: u32 = 8 * data.len;
+    hash_buffer[pad_len - 1] = @byteSwap(bits_trailer);
+
+    // TODO might need to zero rest of buffer, when actually doing alloc.
+    // Note: the rest of the memory should be able to be assumed to be zero.
+
+    // Following logic maps to what happens in the `sys` call in Rust
+    // TODO this doesn't split large requests into smaller ones as the Rust impl does, yet
     asm volatile (
         \\ ecall
         :
         : [syscallNumber] "{t0}" (ECALL_SHA),
-          [buffer] "{a0}" (&buffer),
+          [out_state] "{a0}" (&out_state),
           [in_state] "{a1}" (in_state),
-          [block_1_ptr] "{a2}" (&hash_block),
-          [block_2_ptr] "{a3}" (hash_block[8..]),
-          [count] "{a4}" (1),
+          [block_1_ptr] "{a2}" (&hash_buffer),
+          [block_2_ptr] "{a3}" (hash_buffer[8..]),
+          [count] "{a4}" (pad_len / BLOCK_WORDS),
         : "memory"
     );
 
-    return buffer;
+    return out_state;
 }
 
 fn sys_write(data: []u8) void {
@@ -148,4 +168,18 @@ fn sys_read(fd: u32, comptime nrequested: usize, buffer: *[nrequested]u8) void {
           [main_requested] "{a4}" (nrequested),
         : "memory"
     );
+}
+
+fn compute_u32s_needed(len_bytes: usize) usize {
+    // Add one byte for end marker
+    var nwords = align_up(len_bytes + 1, WORD_SIZE) / WORD_SIZE;
+    // Add two words for length at end (even though we only
+    // use one of them, being a 32-bit architecture)
+    nwords += 2;
+
+    return align_up(nwords, BLOCK_WORDS);
+}
+
+fn align_up(addr: usize, al: usize) usize {
+    return (addr + al - 1) & ~(al - 1);
 }
